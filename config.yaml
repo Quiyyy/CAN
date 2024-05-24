@@ -5,8 +5,8 @@ experiment: "CAN"
 seed: 20211024
 
 # 训练参数
-epochs: 240
-batch_size: 8
+epochs: 30
+batch_size: 6
 workers: 0
 train_parts: 1
 valid_parts: 1
