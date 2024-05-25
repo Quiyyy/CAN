@@ -1,8 +1,9 @@
 import os
-import cv2
+from PIL import Image
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as T
 import time
 import math
 
@@ -16,15 +17,15 @@ from utils import draw_attention_map, draw_counting_map
 
 class Inference(nn.Module):
     def __init__(self, params=None, draw_map=False):
-        super(Inference, self).__init__()
+        super(Inference, self)。__init__()
         self.params = params
         self.draw_map = draw_map
         self.use_label_mask = params['use_label_mask']
         self.encoder = DenseNet(params=self.params)
         self.in_channel = params['counting_decoder']['in_channel']
         self.out_channel = params['counting_decoder']['out_channel']
-        self.counting_decoder1 = counting_decoder(self.in_channel, self.out_channel, 3)
-        self.counting_decoder2 = counting_decoder(self.in_channel, self.out_channel, 5)
+        self.counting_decoder1 = counting_decoder(self.in_channel, self.out_channel， 3)
+        self.counting_decoder2 = counting_decoder(self.in_channel, self.out_channel， 5)
         self.device = params['device']
         self.decoder = decoder_dict[params['decoder']['net']](params=self.params)
 
@@ -34,7 +35,7 @@ class Inference(nn.Module):
         with open(params['word_path']) as f:
             words = f.readlines()
             print(f'共 {len(words)} 类符号。')
-        self.words_index_dict = {i: words[i].strip() for i in range(len(words))}
+        self.words_index_dict = {i: words[i]。strip() for i 在 range(len(words))}
         self.cal_mae = nn.L1Loss(reduction='mean')
         self.cal_mse = nn.MSELoss(reduction='mean') 
 
@@ -46,36 +47,37 @@ class Inference(nn.Module):
         counting_preds = (counting_preds1 + counting_preds2) / 2
         counting_maps = (counting_maps1 + counting_maps2) / 2
    
-        mae = self.cal_mae(counting_preds, gen_counting_label(labels, self.out_channel, True)).item()
-        mse = math.sqrt(self.cal_mse(counting_preds, gen_counting_label(labels, self.out_channel, True)).item())
+        mae = self.cal_mae(counting_preds, gen_counting_label(labels, self.out_channel， True))。item()
+        mse = math.sqrt(self.cal_mse(counting_preds, gen_counting_label(labels, self.out_channel， True))。item())
 
         word_probs, word_alphas = self.decoder(cnn_features, counting_preds, is_train=is_train)
 
         if self.draw_map:
-            if not os.path.exists(os.path.join(self.params['attention_map_vis_path'], name)):
-                os.makedirs(os.path.join(self.params['attention_map_vis_path'], name), exist_ok=True)
-            if not os.path.exists(os.path.join(self.params['counting_map_vis_path'], name)):
-                os.makedirs(os.path.join(self.params['counting_map_vis_path'], name), exist_ok=True)
-            for i in range(images.shape[0]):
-                img = images[i][0].detach().cpu().numpy() * 255
+            if not os.path。exists(os.path。join(self.params['attention_map_vis_path'], name)):
+                os.makedirs(os.path。join(self.params['attention_map_vis_path'], name), exist_ok=True)
+            if not os.path。exists(os.path。join(self.params['counting_map_vis_path'], name)):
+                os.makedirs(os.path。join(self.params['counting_map_vis_path'], name), exist_ok=True)
+            to_pil = T.ToPILImage()
+            for i 在 range(images.shape[0]):
+                img = to_pil(images[i][0]。detach()。cpu())
                 # draw attention_map
-                for step in range(len(word_probs)):
-                    word_atten = word_alphas[step][0].detach().cpu().numpy()
+                for step 在 range(len(word_probs)):
+                    word_atten = word_alphas[step][0]。detach()。cpu()。numpy()
                     word_heatmap = draw_attention_map(img, word_atten)
-                    cv2.imwrite(os.path.join(self.params['attention_map_vis_path'], name, f'word_{step}.jpg'), word_heatmap)
+                    word_heatmap.save(os.path。join(self.params['attention_map_vis_path'], name, f'word_{step}.jpg'))
                 # draw counting_map
-                for idx in range(self.out_channel):
-                    counting_map = counting_maps[0].permute(1,2,0)[:,:,idx].detach().cpu()
+                for idx 在 range(self.out_channel):
+                    counting_map = counting_maps[0]。permute(1，2，0)[:,:,idx]。detach()。cpu()
                     counting_heatmap = draw_counting_map(img, counting_map)
                     img_name = 'symbol_' + self.words_index_dict[idx] + '_map.jpg'
-                    cv2.imwrite(os.path.join(self.params['counting_map_vis_path'], name, img_name), counting_heatmap)
+                    counting_heatmap.save(os.path。join(self.params['counting_map_vis_path'], name, img_name))
 
         return word_probs, word_alphas, mae, mse
 
 
 class AttDecoder(nn.Module):
     def __init__(self, params):
-        super(AttDecoder, self).__init__()
+        super(AttDecoder, self)。__init__()
         self.params = params
         self.input_size = params['decoder']['input_size']
         self.hidden_size = params['decoder']['hidden_size']
@@ -103,16 +105,16 @@ class AttDecoder(nn.Module):
 
     def forward(self, cnn_features, counting_preds, is_train=False):
         batch_size, _, height, width = cnn_features.shape
-        image_mask = torch.ones((batch_size, 1, height, width)).to(self.device)
+        image_mask = torch.ones((batch_size, 1, height, width))。到(self.device)
         
         cnn_features_trans = self.encoder_feature_conv(cnn_features)
         position_embedding = PositionEmbeddingSine(256, normalize=True)
         pos = position_embedding(cnn_features_trans, image_mask[:,0,:,:])
         cnn_features_trans = cnn_features_trans + pos
 
-        word_alpha_sum = torch.zeros((batch_size, 1, height, width)).to(device=self.device)
+        word_alpha_sum = torch.zeros((batch_size, 1, height, width))。到(device=self.device)
         hidden = self.init_hidden(cnn_features, image_mask)
-        word_embedding = self.embedding(torch.ones([batch_size]).long().to(device=self.device))
+        word_embedding = self.embedding(torch.ones([batch_size])。long()。到(device=self.device))
         counting_context_weighted = self.counting_context_weight(counting_preds)
         word_probs = []
         word_alphas = []
@@ -143,7 +145,7 @@ class AttDecoder(nn.Module):
         return word_probs, word_alphas
 
     def init_hidden(self, features, feature_mask):
-        average = (features * feature_mask).sum(-1).sum(-1) / feature_mask.sum(-1).sum(-1)
+        average = (features * feature_mask)。sum(-1)。sum(-1) / feature_mask.sum(-1)。sum(-1)
         average = self.init_weight(average)
         return torch.tanh(average)
 
